@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow.lite as tflite 
 from flask import Flask, jsonify
 from playwright.sync_api import sync_playwright
+import time
 
 # ================= CONFIGURATION =================
 app = Flask(__name__)
