@@ -35,11 +35,11 @@ class YOLO_TFLite:
         self.iou_thres = iou_thres
 
         try:
-            print(f"🧠 Loading TFLite model: {model_path}...")
+            print(f"Loading TFLite model: {model_path}...")
             self.interpreter = tflite.Interpreter(model_path=model_path)
             self.interpreter.allocate_tensors()
         except Exception as e:
-            print(f"❌ CRITICAL ERROR: Could not load model.\n{e}")
+            print(f"CRITICAL ERROR: Could not load model.\n{e}")
             exit()
         
         self.input_details = self.interpreter.get_input_details()[0]
@@ -47,7 +47,7 @@ class YOLO_TFLite:
         self.input_shape = self.input_details['shape'] 
         self.input_h = self.input_shape[1]
         self.input_w = self.input_shape[2]
-        print(f"✅ Model Loaded. Input Shape: {self.input_shape}")
+        print(f"Model Loaded. Input Shape: {self.input_shape}")
     
     def sigmoid(self, x):
         return 1 / (1 + np.exp(-x))
@@ -153,7 +153,7 @@ class YOLO_TFLite:
 
 # --- STREAM FETCHING ---
 def get_fresh_stream_url():
-    print("🔄 Refreshing Stream Token...")
+    print("Refreshing Stream Token...")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -181,7 +181,7 @@ def main():
     server_thread = threading.Thread(target=run_server)
     server_thread.daemon = True 
     server_thread.start()
-    print("🚀 Flask Server running on port 5000")
+    print("Flask Server running on port 5000")
 
     model = YOLO_TFLite(MODEL_NAME, conf_thres=CONF_THRESHOLD)
     current_stream_url = None
@@ -193,12 +193,12 @@ def main():
                 time.sleep(10); continue
 
         cap = cv2.VideoCapture(current_stream_url)
-        print("🎥 Video Capture Started!")
+        print("Video Capture Started!")
 
         while True:
             ret, frame = cap.read()
             if not ret:
-                print("❌ Stream stopped. Fetching new token...")
+                print("Stream stopped. Fetching new token...")
                 current_stream_url = None
                 break 
 
