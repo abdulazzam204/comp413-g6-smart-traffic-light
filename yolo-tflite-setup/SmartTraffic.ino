@@ -5,7 +5,6 @@
 // --- CONFIGURATION ---
 const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
-// IP of your computer running the Python script
 const char* server_url = "http://192.168.1.15:5000/traffic"; 
 
 // Traffic Light Pins
@@ -13,138 +12,220 @@ const char* server_url = "http://192.168.1.15:5000/traffic";
 #define PIN_L1_RED    25
 #define PIN_L2_GREEN  13
 #define PIN_L2_RED    14
+#define PIN_L3_GREEN  32 
+#define PIN_L3_RED    33 
+#define PIN_L4_GREEN  18 
+#define PIN_L4_RED    19 
 
-// Globals
-int lane1_count = 0;
-int lane2_count = 0;
-int lane3_count = 0;
-int lane4_count = 0;
-int l1_time = 5000; // 5s base 
-int l2_time = 5000;
-int l3_time = 5000;
-int l4_time = 5000;
+// --- LOGIC SETTINGS ---
+// Max cars visible in each lane, for saturation calc, [0] is unused
+const int LANE_CAPACITIES[5] = {0, 5, 20, 10, 15}; 
+
+const unsigned long MIN_GREEN = 5000;   // Minimum time light MUST stay green
+const unsigned long MAX_GREEN = 15000;  // Maximum time before force switch
+const unsigned long YELLOW_TIME = 2000; 
+const int BLINK_INTERVAL = 500;
+const float SAT_THRESHOLD = 0.15;       // If saturation < 15%, cut the light (Gap Out)
+const float SKIP_THRESHOLD = 0.05;      // If saturation < 5%, skip the lane entirely
+
+// --- GLOBALS ---
+int counts[5] = {0, 0, 0, 0, 0}; 
+
+// State Machine
+enum State { SEARCH_NEXT, MIN_GREEN_PHASE, ADAPTIVE_PHASE, YELLOW_PHASE };
+State currentState = SEARCH_NEXT;
+
+int currentLane = 0;       // The lane currently green
+int searchIndex = 0;       // Used to cycle through lanes
+unsigned long phaseStart = 0; // Phase start tim
+unsigned long lastTrafficCheck = 0; // Last traffic check time
 
 void setup() {
     Serial.begin(115200);
+    
+    // Pin Setup
+    pinMode(PIN_L1_GREEN, OUTPUT); pinMode(PIN_L1_RED, OUTPUT);
+    pinMode(PIN_L2_GREEN, OUTPUT); pinMode(PIN_L2_RED, OUTPUT);
+    pinMode(PIN_L3_GREEN, OUTPUT); pinMode(PIN_L3_RED, OUTPUT);
+    pinMode(PIN_L4_GREEN, OUTPUT); pinMode(PIN_L4_RED, OUTPUT);
+    
+    turnAllRed();
+
+    // Network Setup
     WiFi.begin(ssid, password);
+    Serial.print("Connecting");
     while (WiFi.status() != WL_CONNECTED) {
         delay(500); Serial.print(".");
     }
     Serial.println(" Connected!");
     
-    pinMode(PIN_L1_GREEN, OUTPUT); pinMode(PIN_L1_RED, OUTPUT);
-    pinMode(PIN_L2_GREEN, OUTPUT); pinMode(PIN_L2_RED, OUTPUT);
-}
-
-// get JSON data
-bool fetch_traffic_data() {
-    HTTPClient http;
-    http.begin(server_url);
+    // Initial Data Fetch
+    fetch_traffic_data();
     
-    int httpCode = http.GET();
-    if (httpCode == 200) {
-        String payload = http.getString();
-        
-        // Parse JSON
-        StaticJsonDocument<200> doc;
-        DeserializationError error = deserializeJson(doc, payload);
-
-        if (!error) {
-            lane1_count = doc["lane1_count"];
-            lane2_count = doc["lane2_count"];
-            lane3_count = doc["lane3_count"];
-            lane4_count = doc["lane4_count"];
-            Serial.printf("Updated Counts -> L1: %d | L2: %d | L3: %d | L4: %d\n", lane1_count, lane2_count, lane3_count, lane4_count);
-            http.end();
-            return true;
-        } else {
-            Serial.println("JSON Error");
-        }
-    } else {
-        Serial.printf("HTTP Error: %d\n", httpCode);
-    }
-    http.end();
-    return false;
-}
-
-void calculate_lights() {
-    // Calculate Timings based on counts (5s base + 2s per car)
-    l1_time = 5000 + (lane1_count * 2000); 
-    l2_time = 5000 + (lane2_count * 2000);
-    l3_time = 5000 + (lane3_count * 2000);
-    l4_time = 5000 + (lane4_count * 2000);
-
-    // Cap max time
-    if (l1_time > 30000) l1_time = 30000;
-    if (l2_time > 30000) l2_time = 30000;
-    if (l3_time > 30000) l3_time = 30000;
-    if (l4_time > 30000) l4_time = 30000;
-}
-
-void run_lights() {
-    // --- PHASE 1: Lane 1 Green ---
-    Serial.printf("Phase 1 GO (%d ms)\n", l1_time);
-    digitalWrite(PIN_L1_RED, LOW);
-    digitalWrite(PIN_L1_GREEN, HIGH);
-    digitalWrite(PIN_L2_RED, HIGH);
-    digitalWrite(PIN_L2_GREEN, LOW);
-    digitalWrite(PIN_L3_GREEN, LOW);
-    digitalWrite(PIN_L3_RED, HIGH);
-    digitalWrite(PIN_L4_GREEN, LOW);
-    digitalWrite(PIN_L4_RED, HIGH);
-    
-    delay(l1_time); // Wait for calculated time
-
-    // Yellow/Red transition (Simplified)
-    digitalWrite(PIN_L1_GREEN, LOW);
-    digitalWrite(PIN_L1_RED, HIGH);
-    delay(1000); // Safety buffer
-
-    // --- PHASE 2: Lane 2 Green ---
-    Serial.printf("Phase 2 GO (%d ms)\n", l2_time);
-    digitalWrite(PIN_L2_RED, LOW);
-    digitalWrite(PIN_L2_GREEN, HIGH);
-    
-    delay(l2_time); // Wait for calculated time
-    
-    digitalWrite(PIN_L2_GREEN, LOW);
-    digitalWrite(PIN_L2_RED, HIGH);
-    delay(1000); // Safety buffer
-
-    // --- PHASE 3: Lane 3 Green ---
-    Serial.printf("Phase 3 GO (%d ms)\n", l3_time);
-    digitalWrite(PIN_L3_RED, LOW);
-    digitalWrite(PIN_L3_GREEN, HIGH);
-    
-    delay(l3_time); // Wait for calculated time
-    
-    digitalWrite(PIN_L3_GREEN, LOW);
-    digitalWrite(PIN_L3_RED, HIGH);
-    delay(1000); // Safety buffer
-    
-    // --- PHASE 4: Lane 4 Green ---
-    Serial.printf("Phase 4 GO (%d ms)\n", l4_time);
-    digitalWrite(PIN_L4_RED, LOW);
-    digitalWrite(PIN_L4_GREEN, HIGH);
-    
-    delay(l4_time); // Wait for calculated time
-    
-    digitalWrite(PIN_L4_GREEN, LOW);
-    digitalWrite(PIN_L4_RED, HIGH);
-    delay(1000); // Safety buffer
+    // Start Logic (Assume we just finished Lane 4, so we start search at Lane 1)
+    currentLane = 4; 
 }
 
 void loop() {
-    // 1. Get Fresh Data at the start of the cycle
-    fetch_traffic_data();
+    unsigned long now = millis();
 
-    // 2. Calculate lights
-    calculate_lights();
+    // Fetch traffic update
+    if (now - lastTrafficCheck >= 500) {
+        fetch_traffic_data();
+        lastTrafficCheck = now;
+    }
 
-    // TODO
-    // 3. Send light timing data to dashboard 
+    // State machine
+    switch (currentState) {
 
-    // Run lights
-    run_lights();
+        // State: find next busy lane
+        case SEARCH_NEXT: {
+            // next lane
+            int candidateLane = currentLane + 1;
+            if (candidateLane > 4) candidateLane = 1;
 
+            // get saturation
+            float saturation = getSaturation(candidateLane);
+            Serial.printf("Checking Lane %d... Sat: %.2f\n", candidateLane, saturation);
+
+            // check saturation of next lane against threshold
+            if (saturation > SKIP_THRESHOLD) {
+                // over threshold, switch to next lane
+                switchToGreen(candidateLane);
+            } else {
+                // under threshold, skip to the lane after the next
+                Serial.printf("Skipping Lane %d (Empty)\n", candidateLane);
+                currentLane = candidateLane; // fast forward     
+                delay(100); 
+            }
+            break;
+        }
+
+        // State: within minimum green time
+        case MIN_GREEN_PHASE: {
+            // ignore sensor, just check for timer
+            if (now - phaseStart >= MIN_GREEN) {
+                currentState = ADAPTIVE_PHASE;
+                Serial.println(" -> Entering Adaptive Logic");
+            }
+            break;
+        }
+
+        // State: adaptive green phase
+        case ADAPTIVE_PHASE: {
+            // check if over max green time
+            if (now - phaseStart >= MAX_GREEN) {
+                Serial.println("⏱️ Max Green Reached. Forcing Change.");
+                switchToYellow();
+                return;
+            }
+
+            // get current lane saturation
+            float currentSat = getSaturation(currentLane);
+            
+            // check saturation against threshold
+            if (currentSat <= SAT_THRESHOLD) {
+                // traffic cleared, skip to next lane
+                Serial.printf("📉 Lane %d Cleared (Sat: %.2f). Gapping Out.\n", currentLane, currentSat);
+                switchToYellow();
+            } else {
+                // traffic still exists, do nothing, continue loop
+            }
+            break;
+        }
+
+        // State: yellow light
+        case YELLOW_PHASE: {
+            if (now - phaseStart >= YELLOW_TIME) {
+                turnLaneRed(currentLane);
+                currentState = SEARCH_NEXT; // look for next lane
+            } else {
+                // blink green light
+                if ((now - phaseStart) / BLINK_INTERVAL % 2 == 0) {
+                    turnLaneGreen(currentLane);
+                } else {
+                    turnLaneOff(currentLane);
+                }
+            }
+            break;
+        }
+    }
+
+    // TODO: add upload data to dashboard
+}
+
+// Helper funtions
+
+float getSaturation(int lane) {
+    if (lane < 1 || lane > 4) return 0.0;
+    float cap = LANE_CAPACITIES[lane];
+    if (cap == 0) cap = 1; // Prevent div by zero
+    float sat = counts[lane] / cap;
+    if (sat > 1.0) sat = 1.0;
+    return sat;
+}
+
+void switchToGreen(int lane) {
+    currentLane = lane;
+    currentState = MIN_GREEN_PHASE;
+    phaseStart = millis();
+
+    turnAllRed(); // Ensure safety
+    turnLaneGreen(lane);
+    
+    Serial.printf("Lane %d GREEN (Sat: %.2f)\n", lane, getSaturation(lane));
+}
+
+void switchToYellow() {
+    currentState = YELLOW_PHASE;
+    phaseStart = millis();
+    Serial.printf("Lane %d YELLOW\n", currentLane);
+}
+
+// Control LEDs
+
+void turnLaneGreen(int lane) {
+    if (lane == 1) { digitalWrite(PIN_L1_RED, LOW); digitalWrite(PIN_L1_GREEN, HIGH); }
+    if (lane == 2) { digitalWrite(PIN_L2_RED, LOW); digitalWrite(PIN_L2_GREEN, HIGH); }
+    if (lane == 3) { digitalWrite(PIN_L3_RED, LOW); digitalWrite(PIN_L3_GREEN, HIGH); }
+    if (lane == 4) { digitalWrite(PIN_L4_RED, LOW); digitalWrite(PIN_L4_GREEN, HIGH); }
+}
+
+void turnLaneRed(int lane) {
+    if (lane == 1) { digitalWrite(PIN_L1_GREEN, LOW); digitalWrite(PIN_L1_RED, HIGH); }
+    if (lane == 2) { digitalWrite(PIN_L2_GREEN, LOW); digitalWrite(PIN_L2_RED, HIGH); }
+    if (lane == 3) { digitalWrite(PIN_L3_GREEN, LOW); digitalWrite(PIN_L3_RED, HIGH); }
+    if (lane == 4) { digitalWrite(PIN_L4_GREEN, LOW); digitalWrite(PIN_L4_RED, HIGH); }
+}
+
+void turnAllRed() {
+    turnLaneRed(1); turnLaneRed(2); turnLaneRed(3); turnLaneRed(4);
+}
+
+void turnLaneOff(int lane) {
+    if (lane == 1) { digitalWrite(PIN_L1_GREEN, LOW); digitalWrite(PIN_L1_RED, LOW); }
+    if (lane == 2) { digitalWrite(PIN_L2_GREEN, LOW); digitalWrite(PIN_L2_RED, LOW); }
+    if (lane == 3) { digitalWrite(PIN_L3_GREEN, LOW); digitalWrite(PIN_L3_RED, LOW); }
+    if (lane == 4) { digitalWrite(PIN_L4_GREEN, LOW); digitalWrite(PIN_L4_RED, LOW); }
+}
+
+// --- NETWORK ---
+void fetch_traffic_data() {
+    HTTPClient http;
+    http.setTimeout(200); // Fast timeout
+    http.begin(server_url);
+    int httpCode = http.GET();
+    
+    if (httpCode == 200) {
+        String payload = http.getString();
+        StaticJsonDocument<200> doc;
+        DeserializationError error = deserializeJson(doc, payload);
+        if (!error) {
+            counts[1] = doc["lane1_count"];
+            counts[2] = doc["lane2_count"];
+            counts[3] = doc["lane3_count"];
+            counts[4] = doc["lane4_count"];
+        }
+    }
+    http.end();
 }
