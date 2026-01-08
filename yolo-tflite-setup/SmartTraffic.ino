@@ -18,8 +18,8 @@ const char* server_url = "http://192.168.1.15:5000/traffic";
 #define PIN_L4_RED    19 
 
 // --- LOGIC SETTINGS ---
-// Max cars visible in each lane, for saturation calc, [0] is unused
-const int LANE_CAPACITIES[5] = {0, 5, 20, 10, 15}; 
+// Max cars visible in each lane, for saturation calc
+const int LANE_CAPACITIES[4] = {5, 20, 10, 15}; 
 
 const unsigned long MIN_GREEN = 5000;   // Minimum time light MUST stay green
 const unsigned long MAX_GREEN = 15000;  // Maximum time before force switch
@@ -29,7 +29,7 @@ const float SAT_THRESHOLD = 0.15;       // If saturation < 15%, cut the light (G
 const float SKIP_THRESHOLD = 0.05;      // If saturation < 5%, skip the lane entirely
 
 // --- GLOBALS ---
-int counts[5] = {0, 0, 0, 0, 0}; 
+int counts[4] = {0, 0, 0, 0}; 
 
 // State Machine
 enum State { SEARCH_NEXT, MIN_GREEN_PHASE, ADAPTIVE_PHASE, YELLOW_PHASE };
@@ -115,7 +115,7 @@ void loop() {
         case ADAPTIVE_PHASE: {
             // check if over max green time
             if (now - phaseStart >= MAX_GREEN) {
-                Serial.println("⏱️ Max Green Reached. Forcing Change.");
+                Serial.println("Max Green Reached. Forcing Change.");
                 switchToYellow();
                 return;
             }
@@ -126,7 +126,7 @@ void loop() {
             // check saturation against threshold
             if (currentSat <= SAT_THRESHOLD) {
                 // traffic cleared, skip to next lane
-                Serial.printf("📉 Lane %d Cleared (Sat: %.2f). Gapping Out.\n", currentLane, currentSat);
+                Serial.printf("Lane %d Cleared (Sat: %.2f). Gapping Out.\n", currentLane, currentSat);
                 switchToYellow();
             } else {
                 // traffic still exists, do nothing, continue loop
@@ -158,9 +158,9 @@ void loop() {
 
 float getSaturation(int lane) {
     if (lane < 1 || lane > 4) return 0.0;
-    float cap = LANE_CAPACITIES[lane];
+    float cap = LANE_CAPACITIES[lane-1];
     if (cap == 0) cap = 1; // Prevent div by zero
-    float sat = counts[lane] / cap;
+    float sat = counts[lane-1] / cap;
     if (sat > 1.0) sat = 1.0;
     return sat;
 }
@@ -221,10 +221,10 @@ void fetch_traffic_data() {
         StaticJsonDocument<200> doc;
         DeserializationError error = deserializeJson(doc, payload);
         if (!error) {
-            counts[1] = doc["lane1_count"];
-            counts[2] = doc["lane2_count"];
-            counts[3] = doc["lane3_count"];
-            counts[4] = doc["lane4_count"];
+            counts[0] = doc["lane1_count"];
+            counts[1] = doc["lane2_count"];
+            counts[2] = doc["lane3_count"];
+            counts[3] = doc["lane4_count"];
         }
     }
     http.end();
