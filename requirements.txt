@@ -1,5 +1,4 @@
 opencv-python
-pytorch
 playwright
 flask
-ultralytics
+tensorflow
