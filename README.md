@@ -119,6 +119,10 @@ Connect your LEDs to the ESP32 pins as defined in the code:
 * `smartTraffic.ino` : Code for ESP32. Handles state machine, communication with server, and LED control.
 * `detect_traffic.tflite` : The quantized custom-trained YOLOv11 model.
 
+## Demo Video Link
+
+https://drive.google.com/drive/folders/1iwdGEQqpGCpy95aNcyDVBLiaVnUj3sEB?usp=drive_link
+
 ## Group Members
 
 * Abdullah Azzam Amrullah
