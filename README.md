@@ -120,7 +120,82 @@ Connect your LEDs to the ESP32 pins as defined in the code:
 * `detect_traffic.tflite` : The quantized custom-trained YOLOv11 model.
 
 ## Dashboard Part
-![System Architecture Diagram](docs/pictures/system-architecture-diagram.png)
+
+Smart City Dashboard Images
+---------------------------
+
+![Screenshot 1](docs/pictures/Ekran%20Resmi%202026-01-11%2023.55.37.png)
+![Screenshot 2](docs/pictures/Ekran%20Resmi%202026-01-11%2023.55.45.png)
+
+Smart Traffic Light
+===================
+
+This project has two sides that work together:
+
+- TinyML side: TFLite + Flask traffic detector that serves `/traffic`.
+- Dashboard side: a Next.js UI that reads the `/traffic` API.
+
+The TinyML flow fetches a public traffic stream, counts vehicles per lane, and
+serves the latest counts so a dashboard or an ESP32 can consume them.
+
+Repo layout
+-----------
+
+- `yolo-tflite-setup` - TFLite + Flask server and model.
+
+TinyML side (TFLite + Flask)
+----------------------------
+
+This uses a TFLite model and a custom inference loop.
+
+Setup
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install opencv-python flask playwright tensorflow numpy
+python -m playwright install
+```
+
+Run
+
+```bash
+cd yolo-tflite-setup
+python debug_traffic2.py
+```
+
+Notes
+
+- The server runs on `http://0.0.0.0:5000`.
+- Update `PAGE_URL`, `X_MIDPOINT`, `Y_MIDPOINT`, and `SKY_LINE` in
+  `debug_traffic2.py`.
+
+Dashboard side (Next.js)
+------------------------
+
+This UI reads the `/traffic` API from the TinyML server.
+
+```bash
+cd <your-nextjs-app>
+npm install
+npm run dev
+```
+
+Point the dashboard at `http://localhost:5000/traffic`.
+
+Traffic API
+-----------
+
+Example response:
+
+```json
+{
+  "lane1_count": 2,
+  "lane2_count": 4,
+  "lane3_count": 1,
+  "lane4_count": 0
+}
+```
 
 ## Demo Video Link
 
